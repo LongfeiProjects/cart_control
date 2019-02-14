@@ -44,19 +44,24 @@ import rospy
 from std_msgs.msg import String, UInt8MultiArray
 from bitstring import BitArray
 
+START_BYPE = 0x05
+SLAVE_ID = 0x01
+STOP_BYPE1 = 0x0D
+STOP_BYPE2 = 0x0A
+
 
 def pack_wcmd_bytes(f1, f2):
     pub_msg_buf = [0x00] * 19
-    pub_msg_buf[0] = 0x05 # START
-    pub_msg_buf[1] = 0x01 # ID
+    pub_msg_buf[0] = START_BYPE # START
+    pub_msg_buf[1] = START_BYPE # ID
     pub_msg_buf[2] = 0x10 # FC
     pub_msg_buf[3] = 0x00 # ADDR
     pub_msg_buf[4] = 0x0C # ADDR
     pub_msg_buf[5] = 0x00 # NUMB
     pub_msg_buf[6] = 0x08 # NUMB
 
-    pub_msg_buf[17] = 0x0D # NUMB
-    pub_msg_buf[18] = 0x0A # NUMB
+    pub_msg_buf[17] = STOP_BYPE1 # NUMB
+    pub_msg_buf[18] = STOP_BYPE2 # NUMB
 
     # fill DATA
     f1_str = str(BitArray(float=f1, length=32))
@@ -80,22 +85,27 @@ def pack_wcmd_bytes(f1, f2):
 
 def pack_rcmd_bytes():
     pub_msg_buf = [0x00] * 19
-    pub_msg_buf[0] = 0x05 # START
-    pub_msg_buf[1] = 0x01 # ID
+    pub_msg_buf[0] = START_BYPE # START
+    pub_msg_buf[1] = START_BYPE # ID
     pub_msg_buf[2] = 0x03 # FC
     pub_msg_buf[3] = 0x00 # ADDR
     pub_msg_buf[4] = 0x01 # ADDR
     pub_msg_buf[5] = 0x00 # NUMB
     pub_msg_buf[6] = 0x34 # NUMB
 
-    pub_msg_buf[9] = 0x0D # STOP
-    pub_msg_buf[10] = 0x0A # STOP
+    pub_msg_buf[9] = STOP_BYPE1 # STOP
+    pub_msg_buf[10] = STOP_BYPE2 # STOP
 
     # fill CRC, for now just fill dummy 00
     exec('pub_msg_buf[7] = 0x00')
     exec('pub_msg_buf[8] = 0x00')
 
     return pub_msg_buf
+
+
+def parse_feedback_bytes():
+    pub_msg_buf = []
+
 
 
 class Cart:
@@ -112,7 +122,7 @@ class Cart:
 
         self.wheel_radius = 0.0
         
-        self.pub_cmd_to_slave = rospy.Publisher('/serial_tx', UInt8MultiArray)
+        self.pub_cmd_to_slave = rospy.Publisher('/serial_tx', UInt8MultiArray, queue_size=10)
 
         self.sub_feedback_from_slave = rospy.Subscriber('/serial_rx', UInt8MultiArray, self.cb_feedback_from_slave)
         
@@ -142,9 +152,32 @@ class Cart:
 
         self.pub_cmd_to_slave.publish(rsqvel_msg)
 
+
     # Parse feedback from slave, and check whether data is valided.
     def cb_feedback_from_slave(self, msg):
-        pass
+        data_len = msg.layout.dim
+        data = msg.data
+        rospy.loginfo('cb_feedback_from_slave have data: %f', data[0])
+
+        if data[0] != START_BYPE:
+            # raise Exception "package received from host does not have the right START_BYTE"
+            rospy.logwarn('package does not meet START_BYPE')
+        
+        if data[1] == SLAVE_ID:
+            if data[2] == 0x03:
+                rospy.loginfo('received feedback from command: read register')
+            elif data[2] == 0x83:
+                rospy.logwarn('failed to receive feedback from command: read register')
+            elif data[2] == 0x10:
+                rospy.loginfo('received feedback from command: write to register')
+            elif data[2] == 0x90:
+                rospy.logwarn('failed to receive feedback from command: write to register')
+            else:
+                rospy.logwarn('unkown function code received')
+            
+        else:
+            rospy.logwarn('package does not meet SLAVE_ID')
+
 
 
 
