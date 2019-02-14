@@ -107,6 +107,24 @@ def parse_feedback_bytes():
     pub_msg_buf = []
 
 
+def convert_hexstr_to_hexlist(hex_str):
+    # strip off '0x' if existed
+    if hex_str[0:2] == '0x':
+        hex_str = hex_str[2:]
+    
+    data_list_size = 0
+    if len(hex_str)%2 != 0:
+        raise Exception('wrong hex string provided, the string must be even size')
+    else:
+        data_list_size = len(hex_str)/2
+    
+    data = [0x00]*data_list_size
+    for i in range(data_list_size):
+        data[i] = int(hex_str[2*i:2*i+2], 16)
+        # print('i is ', i, ', and hex_str[2*i:2*i+2] is', hex_str[2*i:2*i+2])
+    
+    return data
+
 
 class Cart:
     def __init__(self):
@@ -155,12 +173,18 @@ class Cart:
 
     # Parse feedback from slave, and check whether data is valided.
     def cb_feedback_from_slave(self, msg):
-        data_len = msg.layout.dim
-        data = msg.data
-        rospy.loginfo('cb_feedback_from_slave have data: %f', data[0])
+
+        print('cb_feedback_from_slave have received package from the host.')
+        # print('type(msg) is : ', type(msg), ', and the raw msg is: \n', msg)
+
+        data_len = msg.layout.dim[0].size
+        data_str = msg.data.encode('hex')
+        data = convert_hexstr_to_hexlist(data_str)
+
+        print('data_len is: ', data_len, ', and data is: ', data)
 
         if data[0] != START_BYPE:
-            # raise Exception "package received from host does not have the right START_BYTE"
+            # raise Exception("package received from host does not have the right START_BYTE")
             rospy.logwarn('package does not meet START_BYPE')
         
         if data[1] == SLAVE_ID:
@@ -177,8 +201,6 @@ class Cart:
             
         else:
             rospy.logwarn('package does not meet SLAVE_ID')
-
-
 
 
 if __name__ == "__main__":
