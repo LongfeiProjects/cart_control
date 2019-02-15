@@ -103,28 +103,32 @@ def pack_rcmd_bytes():
     return pub_msg_buf
 
 
-def parse_feedback_bytes():
-    pub_msg_buf = []
-
-
 def convert_hexstr_to_hexlist(hex_str):
     # strip off '0x' if existed
     if hex_str[0:2] == '0x':
         hex_str = hex_str[2:]
     
-    data_list_size = 0
+    bytes_list_size = 0
     if len(hex_str)%2 != 0:
         raise Exception('wrong hex string provided, the string must be even size')
     else:
-        data_list_size = len(hex_str)/2
+        bytes_list_size = len(hex_str)/2
     
-    data = [0x00]*data_list_size
-    for i in range(data_list_size):
-        data[i] = int(hex_str[2*i:2*i+2], 16)
+    bytes = [0x00]*bytes_list_size
+    for i in range(bytes_list_size):
+        bytes[i] = int(hex_str[2*i:2*i+2], 16)
         # print('i is ', i, ', and hex_str[2*i:2*i+2] is', hex_str[2*i:2*i+2])
     
-    return data
+    return bytes
 
+
+def bytes_to_float(bytes):
+    f = 0.0
+    return f
+
+def check_crc16(bytes):
+    return True
+    pass
 
 class Cart:
     def __init__(self):
@@ -151,22 +155,22 @@ class Cart:
     def send_wheel_cmdvel(self, cmdvel_x, cmdvel_y):
         self.cmdvel_x = cmdvel_x
         self.cmdvel_y = cmdvel_y
-        data_out = pack_wcmd_bytes(self.cmdvel_x, self.cmdvel_y)
+        bytes_out = pack_wcmd_bytes(self.cmdvel_x, self.cmdvel_y)
 
         cmdvel_msg = UInt8MultiArray()
-        cmdvel_msg.layout.dim = len(data_out)
-        cmdvel_msg.data = data_out
+        cmdvel_msg.layout.dim = len(bytes_out)
+        cmdvel_msg.bytes = bytes_out
 
         self.pub_cmd_to_slave.publish(cmdvel_msg)
 
 
     # host asks to read register
     def request_robot_status(self):
-        data_out = pack_rcmd_bytes()
+        bytes_out = pack_rcmd_bytes()
 
         rsqvel_msg = UInt8MultiArray()
-        rsqvel_msg.layout.dim = len(data_out)
-        rsqvel_msg.data = data_out
+        rsqvel_msg.layout.dim = len(bytes_out)
+        rsqvel_msg.bytes = bytes_out
 
         self.pub_cmd_to_slave.publish(rsqvel_msg)
 
@@ -177,25 +181,42 @@ class Cart:
         print('cb_feedback_from_slave have received package from the host.')
         # print('type(msg) is : ', type(msg), ', and the raw msg is: \n', msg)
 
-        data_len = msg.layout.dim[0].size
-        data_str = msg.data.encode('hex')
-        data = convert_hexstr_to_hexlist(data_str)
+        bytes_len = msg.layout.dim[0].size
+        bytes_str = msg.bytes.encode('hex')
+        bytes = convert_hexstr_to_hexlist(bytes_str)
 
-        print('data_len is: ', data_len, ', and data is: ', data)
+        print('bytes_len is: ', bytes_len, ', and bytes is: ', bytes)
 
-        if data[0] != START_BYPE:
+        if bytes[0] != START_BYPE:
             # raise Exception("package received from host does not have the right START_BYTE")
             rospy.logwarn('package does not meet START_BYPE')
         
-        if data[1] == SLAVE_ID:
-            if data[2] == 0x03:
+        if bytes[1] == SLAVE_ID:
+            if bytes[2] == 0x03:
                 rospy.loginfo('received feedback from command: read register')
-            elif data[2] == 0x83:
+                if check_crc16(bytes):
+                    vl_cmd = bytes_to_float(bytes[45:49])
+                    vr_cmd = bytes_to_float(bytes[49:])
+                else:
+                    rospy.logwarn('check crc16 failed')
+
+            elif bytes[2] == 0x83:
                 rospy.logwarn('failed to receive feedback from command: read register')
-            elif data[2] == 0x10:
+                pass
+
+            elif bytes[2] == 0x10:
                 rospy.loginfo('received feedback from command: write to register')
-            elif data[2] == 0x90:
+                if check_crc16(bytes):
+                    if self.cmdvel_x == bytes_to_float(bytes[45:49]) && self.cmdvel_y == bytes_to_float(bytes[49:]):
+                        rospy.loginfo('slave confirmed the velocity command')
+                    else:
+                        rospy.logwarn('slave does not match the sent velocity command')
+                else:
+                    rospy.logwarn('check crc16 failed')
+
+            elif bytes[2] == 0x90:
                 rospy.logwarn('failed to receive feedback from command: write to register')
+
             else:
                 rospy.logwarn('unkown function code received')
             
@@ -212,7 +233,4 @@ if __name__ == "__main__":
 
     print('velocity of cart is velx: ', cart.vel_x, ', vely: ', cart.vel_y)
     print('estimated pose of cart is posex: ', cart.pose_x, ', posey: ', cart.pose_y, ', rotation along z is: ', cart.pose_rz)
-
-
-
 
