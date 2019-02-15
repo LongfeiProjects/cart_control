@@ -177,7 +177,7 @@ class Cart:
         cmdvel_msg.layout.dim = len(bytes_out)
         cmdvel_msg.data = bytes_out
 
-        rospy.loginfo('send velocity command (cmdvel_l: %f, cmdvel_r: %f) to slave: ', self.cmdvel_l, self.cmdvel_r)
+        rospy.loginfo('send velocity command (cmdvel_l: %f, cmdvel_r: %f) to slave.', self.cmdvel_l, self.cmdvel_r)
         self.pub_cmd_to_slave.publish(cmdvel_msg)
 
 
@@ -202,7 +202,7 @@ class Cart:
         bytes_str = msg.data.encode('hex')
         bytes = convert_hexstr_to_hexlist(bytes_str)
 
-        print('bytes_len is: ', bytes_len, ', bytes_str is: ', bytes_str, ' and bytes is: ', bytes)
+        print('bytes_len is: ', bytes_len, ', bytes_str is: ', bytes_str)
 
         if bytes[0] != START_BYPE:
             # raise Exception("package received from host does not have the right START_BYTE")
@@ -213,8 +213,11 @@ class Cart:
             if bytes[2] == 0x03:
                 rospy.loginfo('received feedback from command: read register')
                 if check_crc16(bytes):
-                    vl_cmd = bytes_to_float(bytes[45:49])
-                    vr_cmd = bytes_to_float(bytes[49:])
+                    # 2 char (per Byte) * 7 Bytes (before DATA) + 8 char (per float/long) * 1 data (before what to read)
+                    # print('===========bytes_str[2*7+8*1:2*7+8*2] is ', bytes_str[2*7+8*1:2*7+8*2])
+                    vl_cmd = bytes_to_float(bytes_str[2*7+8*1:2*7+8*2])
+                    vr_cmd = bytes_to_float(bytes_str[2*7+8*2:2*7+8*3])
+                    rospy.loginfo('data from sensor, vl_cmd is: %f, vr_cmd is: %f', vl_cmd, vr_cmd)
                 else:
                     rospy.logwarn('check crc16 failed')
 
@@ -256,7 +259,6 @@ if __name__ == "__main__":
     print('start cart control!')
     rospy.init_node('cart_control', log_level=rospy.INFO)
 
-    rospy.logwarn('-------------debug0')
     cart = Cart()
 
 
