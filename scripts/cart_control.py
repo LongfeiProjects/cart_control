@@ -153,8 +153,8 @@ class Cart:
         self.vel_y = 0.0
         self.vel_rz = 0.0
 
-        self.cmdvel_x = 0.0
-        self.cmdvel_y = 0.0
+        self.cmdvel_l = 0.0
+        self.cmdvel_r = 0.0
 
         self.wheel_radius = 0.0
         
@@ -162,23 +162,22 @@ class Cart:
 
         self.sub_feedback_from_slave = rospy.Subscriber('/serial_rx', UInt8MultiArray, self.cb_feedback_from_slave)
         
-        self.cmdvel_x = 3.5
-        self.cmdvel_y = -3.5
+        # test cb_feedback_from_slave/{condition: bytes[2] == 0x10}
+        self.send_wheel_cmdvel(3.5, -3.5)
         rospy.spin()
 
 
     # host asks to write to register
-    def send_wheel_cmdvel(self, cmdvel_x, cmdvel_y):
-        self.cmdvel_x = cmdvel_x
-        self.cmdvel_y = cmdvel_y
-        bytes_out = pack_wcmd_bytes(self.cmdvel_x, self.cmdvel_y)
+    def send_wheel_cmdvel(self, cmdvel_l, cmdvel_r):
+        self.cmdvel_l = cmdvel_l
+        self.cmdvel_r = cmdvel_r
+        bytes_out = pack_wcmd_bytes(self.cmdvel_l, self.cmdvel_r)
 
         cmdvel_msg = UInt8MultiArray()
         cmdvel_msg.layout.dim = len(bytes_out)
         cmdvel_msg.data = bytes_out
 
-        print('------------self.cmdvel_x is ', self.cmdvel_x)
-
+        rospy.loginfo('send velocity command (cmdvel_l: %f, cmdvel_r: %f) to slave: ', self.cmdvel_l, self.cmdvel_r)
         self.pub_cmd_to_slave.publish(cmdvel_msg)
 
 
@@ -230,13 +229,8 @@ class Cart:
 
             elif bytes[2] == 0x10:
                 rospy.loginfo('received feedback from command: write to register')
-                print('bytes[45:49] is : ', bytes_str[22:30])
-                print('float is : ', bytes_to_float(bytes_str[22:30]))
-
                 if check_crc16(bytes):
-                    print('self.cmdvel_x is ', self.cmdvel_x)
-                    print('bytes_to_float(bytes_str[14:22]) is ', bytes_to_float(bytes_str[14:22]))
-                    if float_equal(self.cmdvel_x, bytes_to_float(bytes_str[14:22])) and float_equal(self.cmdvel_y, bytes_to_float(bytes_str[22:30])):
+                    if float_equal(self.cmdvel_l, bytes_to_float(bytes_str[14:22])) and float_equal(self.cmdvel_r, bytes_to_float(bytes_str[22:30])):
                         rospy.loginfo('slave confirmed the velocity command')
                     else:
                         rospy.logwarn('slave does not match the sent velocity command')
