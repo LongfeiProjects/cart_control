@@ -123,19 +123,20 @@ def convert_hexstr_to_hexlist(hex_str):
     return bytes
 
 
-def bytes_to_float(bytes):
-    print('len(bytes)is ', len(bytes))
-    print('byres are ', bytes)
-    if(len(bytes) == 4):
-        my_hex_str = hex(bytes[0])[2:] + hex(bytes[1])[2:] + hex(bytes[2])[2:] + hex(bytes[3])[2:]
-        print('my_hex_str is ', my_hex_str)
-
-        f = BitArray(hex=my_hex_str)
-        print('f.float is ', f.float)
+def bytes_to_float(hex_str):
+    if(len(hex_str) == 8):
+        f = BitArray(hex=hex_str)
         return f.float
     else:
         rospy.logwarn('The float in the prototype must have the length of 4 bytes!')
         return 0.0
+
+
+def float_equal(f1, f2):
+    if abs(f1-f2)<=1e-6:
+        return True
+    else:
+        return False
 
 
 def check_crc16(bytes):
@@ -161,6 +162,8 @@ class Cart:
 
         self.sub_feedback_from_slave = rospy.Subscriber('/serial_rx', UInt8MultiArray, self.cb_feedback_from_slave)
         
+        self.cmdvel_x = 3.5
+        self.cmdvel_y = -3.5
         rospy.spin()
 
 
@@ -172,7 +175,9 @@ class Cart:
 
         cmdvel_msg = UInt8MultiArray()
         cmdvel_msg.layout.dim = len(bytes_out)
-        cmdvel_msg.bytes = bytes_out
+        cmdvel_msg.data = bytes_out
+
+        print('------------self.cmdvel_x is ', self.cmdvel_x)
 
         self.pub_cmd_to_slave.publish(cmdvel_msg)
 
@@ -225,8 +230,13 @@ class Cart:
 
             elif bytes[2] == 0x10:
                 rospy.loginfo('received feedback from command: write to register')
+                print('bytes[45:49] is : ', bytes_str[22:30])
+                print('float is : ', bytes_to_float(bytes_str[22:30]))
+
                 if check_crc16(bytes):
-                    if self.cmdvel_x == bytes_to_float(bytes[45:49]) and self.cmdvel_y == bytes_to_float(bytes[49:]):
+                    print('self.cmdvel_x is ', self.cmdvel_x)
+                    print('bytes_to_float(bytes_str[14:22]) is ', bytes_to_float(bytes_str[14:22]))
+                    if float_equal(self.cmdvel_x, bytes_to_float(bytes_str[14:22])) and float_equal(self.cmdvel_y, bytes_to_float(bytes_str[22:30])):
                         rospy.loginfo('slave confirmed the velocity command')
                     else:
                         rospy.logwarn('slave does not match the sent velocity command')
@@ -252,9 +262,7 @@ if __name__ == "__main__":
     print('start cart control!')
     rospy.init_node('cart_control', log_level=rospy.INFO)
 
+    rospy.logwarn('-------------debug0')
     cart = Cart()
-    cart.send_wheel_cmdvel(0.1, 0.1)
 
-    print('velocity of cart is velx: ', cart.vel_x, ', vely: ', cart.vel_y)
-    print('estimated pose of cart is posex: ', cart.pose_x, ', posey: ', cart.pose_y, ', rotation along z is: ', cart.pose_rz)
 
