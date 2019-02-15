@@ -64,6 +64,7 @@ def pack_wcmd_bytes(f1, f2):
     pub_msg_buf[18] = STOP_BYPE2 # NUMB
 
     # fill DATA
+    # f1_str = str(bitstring.pack('>f',f1))
     f1_str = str(BitArray(float=f1, length=32))
     exec('pub_msg_buf[7]  = 0x'+f1_str[2:4])
     exec('pub_msg_buf[8]  = 0x'+f1_str[4:6])
@@ -123,12 +124,24 @@ def convert_hexstr_to_hexlist(hex_str):
 
 
 def bytes_to_float(bytes):
-    f = 0.0
-    return f
+    print('len(bytes)is ', len(bytes))
+    print('byres are ', bytes)
+    if(len(bytes) == 4):
+        my_hex_str = hex(bytes[0])[2:] + hex(bytes[1])[2:] + hex(bytes[2])[2:] + hex(bytes[3])[2:]
+        print('my_hex_str is ', my_hex_str)
+
+        f = BitArray(hex=my_hex_str)
+        print('f.float is ', f.float)
+        return f.float
+    else:
+        rospy.logwarn('The float in the prototype must have the length of 4 bytes!')
+        return 0.0
+
 
 def check_crc16(bytes):
     return True
     pass
+
 
 class Cart:
     def __init__(self):
@@ -182,14 +195,15 @@ class Cart:
         # print('type(msg) is : ', type(msg), ', and the raw msg is: \n', msg)
 
         bytes_len = msg.layout.dim[0].size
-        bytes_str = msg.bytes.encode('hex')
+        bytes_str = msg.data.encode('hex')
         bytes = convert_hexstr_to_hexlist(bytes_str)
 
-        print('bytes_len is: ', bytes_len, ', and bytes is: ', bytes)
+        print('bytes_len is: ', bytes_len, ', bytes_str is: ', bytes_str, ' and bytes is: ', bytes)
 
         if bytes[0] != START_BYPE:
             # raise Exception("package received from host does not have the right START_BYTE")
             rospy.logwarn('package does not meet START_BYPE')
+            return
         
         if bytes[1] == SLAVE_ID:
             if bytes[2] == 0x03:
@@ -202,12 +216,17 @@ class Cart:
 
             elif bytes[2] == 0x83:
                 rospy.logwarn('failed to receive feedback from command: read register')
+                if check_crc16(bytes):
+                    error_code = int(bytes_str[14:22], 16)
+                    rospy.logwarn('error_code is %d', error_code)
+                else:
+                    rospy.logwarn('check crc16 failed')
                 pass
 
             elif bytes[2] == 0x10:
                 rospy.loginfo('received feedback from command: write to register')
                 if check_crc16(bytes):
-                    if self.cmdvel_x == bytes_to_float(bytes[45:49]) && self.cmdvel_y == bytes_to_float(bytes[49:]):
+                    if self.cmdvel_x == bytes_to_float(bytes[45:49]) and self.cmdvel_y == bytes_to_float(bytes[49:]):
                         rospy.loginfo('slave confirmed the velocity command')
                     else:
                         rospy.logwarn('slave does not match the sent velocity command')
@@ -216,7 +235,12 @@ class Cart:
 
             elif bytes[2] == 0x90:
                 rospy.logwarn('failed to receive feedback from command: write to register')
-
+                if check_crc16(bytes):
+                    error_code = int(bytes_str[14:22], 16)
+                    rospy.logwarn('error_code is %d', error_code)
+                else:
+                    rospy.logwarn('check crc16 failed')
+                pass
             else:
                 rospy.logwarn('unkown function code received')
             
