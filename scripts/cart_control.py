@@ -41,7 +41,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 --------------------------------------------------------------------"""
 
 import rospy
-from std_msgs.msg import String, UInt8MultiArray
+from std_msgs.msg import String, UInt8MultiArray, MultiArrayDimension
 from bitstring import BitArray
 
 START_BYPE = 0x05
@@ -85,9 +85,9 @@ def pack_wcmd_bytes(f1, f2):
 
 
 def pack_rcmd_bytes():
-    pub_msg_buf = [0x00] * 19
+    pub_msg_buf = [0x00] * 11
     pub_msg_buf[0] = START_BYPE # START
-    pub_msg_buf[1] = START_BYPE # ID
+    pub_msg_buf[1] = SLAVE_ID # ID
     pub_msg_buf[2] = 0x03 # FC
     pub_msg_buf[3] = 0x00 # ADDR
     pub_msg_buf[4] = 0x01 # ADDR
@@ -163,6 +163,10 @@ class Cart:
         self.sub_feedback_from_slave = rospy.Subscriber('/serial_rx', UInt8MultiArray, self.cb_feedback_from_slave)
         
         # test cb_feedback_from_slave/{condition: bytes[2] == 0x10}
+        rospy.sleep(1.0)
+        self.request_robot_status()
+
+        rospy.sleep(1.0)
         self.send_wheel_cmdvel(3.5, -3.5)
         rospy.spin()
 
@@ -174,7 +178,8 @@ class Cart:
         bytes_out = pack_wcmd_bytes(self.cmdvel_l, self.cmdvel_r)
 
         cmdvel_msg = UInt8MultiArray()
-        cmdvel_msg.layout.dim = len(bytes_out)
+        cmdvel_msg.layout.dim.append(MultiArrayDimension())
+        cmdvel_msg.layout.dim[0].size = len(bytes_out)
         cmdvel_msg.data = bytes_out
 
         rospy.loginfo('send velocity command (cmdvel_l: %f, cmdvel_r: %f) to slave.', self.cmdvel_l, self.cmdvel_r)
@@ -186,9 +191,11 @@ class Cart:
         bytes_out = pack_rcmd_bytes()
 
         rsqvel_msg = UInt8MultiArray()
-        rsqvel_msg.layout.dim = len(bytes_out)
-        rsqvel_msg.bytes = bytes_out
+        rsqvel_msg.layout.dim.append(MultiArrayDimension())
+        rsqvel_msg.layout.dim[0].size = len(bytes_out)
+        rsqvel_msg.data = bytes_out
 
+        print('request to read register: ', bytes_out)
         self.pub_cmd_to_slave.publish(rsqvel_msg)
 
 
